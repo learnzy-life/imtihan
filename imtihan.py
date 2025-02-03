@@ -14,14 +14,19 @@ users_db = {
 }
 
 # Initialize session state variables
-if 'authenticated' not in st.session_state:
-    st.session_state.authenticated = False
-if 'test_started' not in st.session_state:
-    st.session_state.test_started = False
-if 'current_question' not in st.session_state:
-    st.session_state.current_question = 0
-if 'user_answers' not in st.session_state:
-    st.session_state.user_answers = {}
+def initialize_session_state():
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    if 'test_started' not in st.session_state:
+        st.session_state.test_started = False
+    if 'current_question' not in st.session_state:
+        st.session_state.current_question = 0
+    if 'user_answers' not in st.session_state:
+        st.session_state.user_answers = {}
+    if 'question_start_time' not in st.session_state:
+        st.session_state.question_start_time = time.time()
+
+initialize_session_state()
 
 # Load data once
 @st.cache_data
@@ -54,8 +59,11 @@ def authenticate_user():
                 st.session_state.authenticated = True
                 st.session_state.username = username
                 st.success(f"Welcome {username}!")
+                return True
             else:
                 st.error("Invalid credentials")
+                return False
+    return False
 
 def display_question(q):
     st.subheader(f"Question {st.session_state.current_question + 1}")
@@ -69,12 +77,13 @@ def display_question(q):
     if st.button("Next Question"):
         process_answer(q, answer)
         st.session_state.current_question += 1
-        st.experimental_rerun()
+        st.session_state.question_start_time = time.time()
+        st.rerun()
 
 def process_answer(q, answer):
-    # Track time and answers in session state
     question_id = q['Question ID']
     correct_answer = q['Correct Answer']
+    options = [q['Option A'], q['Option B'], q['Option C'], q['Option D']]
     selected_option = chr(65 + options.index(answer))
     
     st.session_state.user_answers[question_id] = {
@@ -134,14 +143,13 @@ else:
         if st.button("Start Test"):
             st.session_state.test_started = True
             st.session_state.question_start_time = time.time()
-            st.experimental_rerun()
+            st.rerun()
     else:
         if st.session_state.current_question < len(questions):
             q = questions[st.session_state.current_question]
             display_question(q)
-            st.session_state.question_start_time = time.time()
         else:
             show_results()
             if st.button("Retake Test"):
                 st.session_state.clear()
-                st.experimental_rerun()
+                st.rerun()
