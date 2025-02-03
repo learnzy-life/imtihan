@@ -1,155 +1,121 @@
-import streamlit as st
-import pandas as pd
-import time
-import csv
-import os
-
-# Google Sheets CSV URL
-sheet_url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRL4XMpdsZB_DFz0LTbfUhV5sd_HkleNAcDSJle-QSrECMN2Q8PA7iP6XNR97w5z20kNpVAdIK3a1ZE/pub?output=csv'
-
-# User authentication dictionary (username: password)
-users_db = {
-    'user1': 'password1',
-    'user2': 'password2',
-}
-
-# Initialize session state variables
-def initialize_session_state():
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'test_started' not in st.session_state:
-        st.session_state.test_started = False
-    if 'current_question' not in st.session_state:
-        st.session_state.current_question = 0
-    if 'user_answers' not in st.session_state:
-        st.session_state.user_answers = {}
-    if 'question_start_time' not in st.session_state:
-        st.session_state.question_start_time = time.time()
-
-initialize_session_state()
-
-# Load data once
-@st.cache_data
-def load_data():
-    data = pd.read_csv(sheet_url)
-    return data.to_dict(orient='records')
-
-questions = load_data()
-
-# Streamlit optimized functions
-def get_topper_time(user_time):
-    return round(user_time * 0.7, 2)
-
-def get_video_suggestions(topic):
-    video_suggestions = {
-        'Math': 'https://www.youtube.com/watch?v=Q5H9P9_cLo4',
-        'Physics': 'https://www.youtube.com/watch?v=7jB5guIhwcY',
-        'Chemistry': 'https://www.youtube.com/watch?v=8glvj2zzVg4'
-    }
-    return video_suggestions.get(topic, "No video suggestion available.")
-
-def authenticate_user():
-    with st.form("auth_form"):
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            if users_db.get(username) == password:
-                st.session_state.authenticated = True
-                st.session_state.username = username
-                st.success(f"Welcome {username}!")
-                return True
-            else:
-                st.error("Invalid credentials")
-                return False
-    return False
-
-def display_question(q):
-    st.subheader(f"Question {st.session_state.current_question + 1}")
-    st.write(q['Question Text'])
-    
-    options = [q['Option A'], q['Option B'], q['Option C'], q['Option D']]
-    answer = st.radio("Select your answer:", 
-                     options=options,
-                     key=f"q{st.session_state.current_question}")
-    
-    if st.button("Next Question"):
-        process_answer(q, answer)
-        st.session_state.current_question += 1
-        st.session_state.question_start_time = time.time()
-        st.rerun()
-
-def process_answer(q, answer):
-    question_id = q['Question ID']
-    correct_answer = q['Correct Answer']
-    options = [q['Option A'], q['Option B'], q['Option C'], q['Option D']]
-    selected_option = chr(65 + options.index(answer))
-    
-    st.session_state.user_answers[question_id] = {
-        'selected': selected_option,
-        'correct': correct_answer,
-        'time_taken': time.time() - st.session_state.question_start_time
-    }
-
 def show_results():
     st.balloons()
-    st.title("Test Results")
+    st.title("📊 Detailed Performance Analysis")
     
-    # Calculate metrics
+    # Calculate basic metrics
     total_time = sum(ans['time_taken'] for ans in st.session_state.user_answers.values())
     correct = sum(1 for ans in st.session_state.user_answers.values() if ans['selected'] == ans['correct'])
     accuracy = (correct / len(questions)) * 100
+    topper_total_time = total_time * 0.7  # Topper's total time (30% less)
+
+    # --- Time Analysis Section ---
+    st.header("⏱ Time Management Analysis")
     
-    # Display metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Time", f"{total_time:.2f}s")
-    with col2:
-        st.metric("Accuracy", f"{accuracy:.2f}%")
-    with col3:
-        st.metric("Correct Answers", f"{correct}/{len(questions)}")
+    # Create columns for time metrics
+    time_col1, time_col2, time_col3 = st.columns(3)
+    with time_col1:
+        st.metric("Your Total Time", f"{total_time:.2f}s", delta="Your Time")
+    with time_col2:
+        st.metric("Topper's Benchmark Time", f"{topper_total_time:.2f}s", delta_color="off")
+    with time_col3:
+        time_diff = total_time - topper_total_time
+        st.metric("Time Difference", f"{time_diff:.2f}s", 
+                 delta=f"{'Over' if time_diff > 0 else 'Under'} Benchmark")
+
+    # Add time comparison chart
+    st.subheader("Question-wise Time Comparison")
+    time_data = []
+    for q in questions:
+        user_time = st.session_state.user_answers[q['Question ID']]['time_taken']
+        topper_time = get_topper_time(user_time)
+        time_data.append({
+            'Question': q['Question ID'],
+            'Your Time': user_time,
+            'Topper Time': topper_time
+        })
     
-    # Show detailed analysis
-    with st.expander("Detailed Analysis"):
-        st.subheader("Topic-wise Performance")
-        topic_data = {}
-        for q in questions:
-            ans = st.session_state.user_answers[q['Question ID']]
-            topic = q['Topic']
-            if topic not in topic_data:
-                topic_data[topic] = {'correct': 0, 'total': 0, 'time': 0}
-            topic_data[topic]['total'] += 1
-            topic_data[topic]['time'] += ans['time_taken']
-            if ans['selected'] == ans['correct']:
-                topic_data[topic]['correct'] += 1
+    # Display as bar chart
+    time_df = pd.DataFrame(time_data).set_index('Question')
+    st.bar_chart(time_df)
+
+    # --- Topic-wise Analysis Section ---
+    st.header("📚 Topic-wise Performance Breakdown")
+    
+    # Calculate topic statistics
+    topic_stats = {}
+    for q in questions:
+        topic = q['Topic']
+        ans = st.session_state.user_answers[q['Question ID']]
         
-        for topic, data in topic_data.items():
+        if topic not in topic_stats:
+            topic_stats[topic] = {
+                'correct': 0,
+                'total': 0,
+                'user_time': 0,
+                'topper_time': 0
+            }
+        
+        topic_stats[topic]['total'] += 1
+        topic_stats[topic]['user_time'] += ans['time_taken']
+        topic_stats[topic]['topper_time'] += get_topper_time(ans['time_taken'])
+        
+        if ans['selected'] == ans['correct']:
+            topic_stats[topic]['correct'] += 1
+
+    # Create dataframe for display
+    analysis_df = pd.DataFrame.from_dict(topic_stats, orient='index')
+    analysis_df['Accuracy'] = (analysis_df['correct'] / analysis_df['total']) * 100
+    analysis_df['Avg Time/Question'] = analysis_df['user_time'] / analysis_df['total']
+    analysis_df['Topper Avg Time'] = analysis_df['topper_time'] / analysis_df['total']
+    analysis_df['Time Difference'] = analysis_df['Avg Time/Question'] - analysis_df['Topper Avg Time']
+    analysis_df['Status'] = analysis_df.apply(lambda x: 
+        "🚨 Needs Improvement" if x['Accuracy'] < 70 else "✅ Strong", axis=1)
+
+    # Display topic analysis in columns
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Accuracy Analysis")
+        for topic, data in analysis_df.iterrows():
             st.write(f"**{topic}**")
-            st.progress(data['correct']/data['total'])
-            st.write(f"Score: {data['correct']}/{data['total']}")
-            st.write(f"Time Spent: {data['time']:.2f}s")
+            st.progress(data['Accuracy']/100)
+            st.caption(f"{data['correct']}/{data['total']} correct ({data['Accuracy']:.1f}%)")
             
-            if (data['correct']/data['total']) < 0.7:
-                st.write(f"📚 Suggestion: {get_video_suggestions(topic)}")
+            if data['Accuracy'] < 70:
+                st.markdown(f"💡 **Suggestion:** [Watch Video]({get_video_suggestions(topic)})")
 
-# Main app flow
-st.title("Online Mock Test Platform")
+    with col2:
+        st.subheader("Time Efficiency")
+        for topic, data in analysis_df.iterrows():
+            st.write(f"**{topic}**")
+            st.metric(
+                label="Avg Time/Question",
+                value=f"{data['Avg Time/Question']:.1f}s",
+                delta=f"{data['Time Difference']:.1f}s vs Topper",
+                delta_color="inverse"
+            )
 
-if not st.session_state.authenticated:
-    authenticate_user()
-else:
-    if not st.session_state.test_started:
-        if st.button("Start Test"):
-            st.session_state.test_started = True
-            st.session_state.question_start_time = time.time()
-            st.rerun()
+    # --- Detailed Data Table ---
+    with st.expander("📋 View Detailed Statistics Table"):
+        st.dataframe(
+            analysis_df[['Accuracy', 'Avg Time/Question', 'Topper Avg Time', 'Status']].style
+                .format({
+                    'Accuracy': "{:.1f}%",
+                    'Avg Time/Question': "{:.1f}s",
+                    'Topper Avg Time': "{:.1f}s"
+                })
+                .applymap(lambda x: 'background-color: #ffcccc' if x == "🚨 Needs Improvement" else ''),
+            use_container_width=True
+        )
+
+    # --- Final Summary ---
+    st.header("🎯 Key Takeaways")
+    weak_topics = analysis_df[analysis_df['Accuracy'] < 70].index.tolist()
+    
+    if weak_topics:
+        st.error(f"**Focus Areas:** You need improvement in {', '.join(weak_topics)}")
     else:
-        if st.session_state.current_question < len(questions):
-            q = questions[st.session_state.current_question]
-            display_question(q)
-        else:
-            show_results()
-            if st.button("Retake Test"):
-                st.session_state.clear()
-                st.rerun()
+        st.success("**Great Job!** You're performing well across all topics!")
+
+    st.write(f"**Overall Accuracy:** {accuracy:.1f}%")
+    st.write(f"**Total Test Time:** {total_time:.2f}s (Topper Benchmark: {topper_total_time:.2f}s)")
