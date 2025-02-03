@@ -54,10 +54,13 @@ def authenticate_user():
     if st.button('Login'):
         if users_db.get(username) == password:
             st.success(f"Welcome {username}!")
-            return username
+            st.session_state.logged_in = True  # Set logged_in flag to True
+            st.session_state.username = username  # Store the username in session state
+            return True
         else:
             st.error("Invalid username or password. Please try again.")
-            return None
+            return False
+    return False
 
 # Function to store the results persistently
 def store_results(username, total_time, accuracy, time_per_question, topic_time, incorrect_questions):
@@ -193,10 +196,17 @@ def analyze_performance(username, total_test_time):
 
 # Main function to run the test
 def main():
-    username = authenticate_user()
-    if username:
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False  # Initialize logged_in flag if not already set
+
+    if not st.session_state.logged_in:
+        # Handle login
+        if authenticate_user():
+            st.session_state.logged_in = True
+    else:
+        # If logged in, show the button to start the mock test
         if st.button('Start Mock Test'):
-            start_mock_test(username)
+            start_mock_test(st.session_state.username)
 
 # Run the main function
 if __name__ == "__main__":
