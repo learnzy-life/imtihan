@@ -1,153 +1,147 @@
-import time
 import streamlit as st
+import pandas as pd
+import time
+import csv
+import os
 
-# Initialize global variables to track results
-total_time = 0
-correct_answers = 0
-time_per_question = []
-topic_time = {}
-incorrect_questions = []
-topic_scores = {}
-topic_counts = []
-question_times = []
+# Google Sheets CSV URL
+sheet_url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRL4XMpdsZB_DFz0LTbfUhV5sd_HkleNAcDSJle-QSrECMN2Q8PA7iP6XNR97w5z20kNpVAdIK3a1ZE/pub?output=csv'
 
-# Dummy questions for the mock test
-questions = [
-    {
-        'Question ID': 1,
-        'Question Text': 'What is the capital of France?',
-        'Option A': 'Paris',
-        'Option B': 'London',
-        'Option C': 'Rome',
-        'Option D': 'Berlin',
-        'Correct Answer': 'A',
-        'Topic': 'Geography'
-    },
-    {
-        'Question ID': 2,
-        'Question Text': 'Who developed the theory of relativity?',
-        'Option A': 'Isaac Newton',
-        'Option B': 'Albert Einstein',
-        'Option C': 'Galileo Galilei',
-        'Option D': 'Nikola Tesla',
-        'Correct Answer': 'B',
-        'Topic': 'Physics'
-    },
-    # Add more questions as needed
-]
+# User authentication dictionary (username: password)
+users_db = {
+    'user1': 'password1',
+    'user2': 'password2',
+}
 
-# Function to analyze performance after test completion
-def analyze_performance(username, total_test_time):
-    global correct_answers, total_time, topic_scores, topic_counts, time_per_question, topic_time, incorrect_questions
-    
-    st.write(f"Test completed! Well done, {username}!")
-    st.write(f"Total time taken: {total_test_time} seconds.")
-    st.write(f"Correct answers: {correct_answers} out of {len(questions)}")
-    st.write(f"Total time spent: {total_time} seconds")
-    
-    # Displaying time per question
-    st.write("Time taken per question:")
-    for q_id, time_taken in time_per_question:
-        st.write(f"Question {q_id}: {time_taken} seconds")
-    
-    # Displaying time spent per topic
-    st.write("Time spent per topic:")
-    for topic, time_spent in topic_time.items():
-        st.write(f"{topic}: {time_spent} seconds")
-    
-    # Displaying incorrect questions
-    st.write("Incorrect Questions:")
-    for q_id in incorrect_questions:
-        st.write(f"Question {q_id} was answered incorrectly.")
-    
-    # Displaying topic-wise scores
-    st.write("Topic-wise Scores:")
-    for topic, score in topic_scores.items():
-        total_topic_questions = topic_counts.get(topic, 0)
-        st.write(f"{topic}: {score}/{total_topic_questions} correct")
+# Initialize session state variables
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+if 'test_started' not in st.session_state:
+    st.session_state.test_started = False
+if 'current_question' not in st.session_state:
+    st.session_state.current_question = 0
+if 'user_answers' not in st.session_state:
+    st.session_state.user_answers = {}
 
-# Function to start the mock test
-def start_mock_test(username):
-    global total_time, correct_answers, time_per_question, topic_time, incorrect_questions, topic_scores, topic_counts
-    total_time = 0
-    correct_answers = 0
-    time_per_question = []
-    topic_time = {}
-    incorrect_questions = []
-    topic_scores = {}
-    topic_counts = {}
+# Load data once
+@st.cache_data
+def load_data():
+    data = pd.read_csv(sheet_url)
+    return data.to_dict(orient='records')
 
-    # Record the start time of the test
-    test_start_time = time.time()
+questions = load_data()
 
-    for q in questions:
-        st.write(f"\n**{q['Question Text']}**")
-        st.write(f"A. {q['Option A']}")
-        st.write(f"B. {q['Option B']}")
-        st.write(f"C. {q['Option C']}")
-        st.write(f"D. {q['Option D']}")
+# Streamlit optimized functions
+def get_topper_time(user_time):
+    return round(user_time * 0.7, 2)
 
-        # Ask the user for input with a unique key for each question
-        user_answer = st.radio(
-            "Your answer:",
-            ['A', 'B', 'C', 'D'],
-            key=f"question_{q['Question ID']}"  # Unique key based on the question ID
-        )
+def get_video_suggestions(topic):
+    video_suggestions = {
+        'Math': 'https://www.youtube.com/watch?v=Q5H9P9_cLo4',
+        'Physics': 'https://www.youtube.com/watch?v=7jB5guIhwcY',
+        'Chemistry': 'https://www.youtube.com/watch?v=8glvj2zzVg4'
+    }
+    return video_suggestions.get(topic, "No video suggestion available.")
 
-        # Record the start time of the question
-        question_start_time = time.time()
-
-        if user_answer:
-            # Record the end time after user selection
-            question_end_time = time.time()
-
-            time_taken = round(question_end_time - question_start_time, 2)
-            total_time += time_taken
-
-            # Track time per question
-            time_per_question.append((q['Question ID'], time_taken))
-
-            # Track time spent on each topic
-            if q['Topic'] not in topic_time:
-                topic_time[q['Topic']] = 0
-            topic_time[q['Topic']] += time_taken
-
-            # Track score per topic
-            if q['Topic'] not in topic_scores:
-                topic_scores[q['Topic']] = 0
-                topic_counts[q['Topic']] = 0
-
-            # Check if the answer is correct
-            if user_answer == q['Correct Answer']:
-                correct_answers += 1
-                topic_scores[q['Topic']] += 1
+def authenticate_user():
+    with st.form("auth_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        
+        if submitted:
+            if users_db.get(username) == password:
+                st.session_state.authenticated = True
+                st.session_state.username = username
+                st.success(f"Welcome {username}!")
             else:
-                incorrect_questions.append(q['Question ID'])
+                st.error("Invalid credentials")
 
-            # Track the total number of questions for each topic
-            topic_counts[q['Topic']] += 1
+def display_question(q):
+    st.subheader(f"Question {st.session_state.current_question + 1}")
+    st.write(q['Question Text'])
+    
+    options = [q['Option A'], q['Option B'], q['Option C'], q['Option D']]
+    answer = st.radio("Select your answer:", 
+                     options=options,
+                     key=f"q{st.session_state.current_question}")
+    
+    if st.button("Next Question"):
+        process_answer(q, answer)
+        st.session_state.current_question += 1
+        st.experimental_rerun()
 
-            # Record the time for each question
-            question_times.append(time_taken)
+def process_answer(q, answer):
+    # Track time and answers in session state
+    question_id = q['Question ID']
+    correct_answer = q['Correct Answer']
+    selected_option = chr(65 + options.index(answer))
+    
+    st.session_state.user_answers[question_id] = {
+        'selected': selected_option,
+        'correct': correct_answer,
+        'time_taken': time.time() - st.session_state.question_start_time
+    }
 
-    # Calculate the total time of the test
-    test_end_time = time.time()
-    total_test_time = round(test_end_time - test_start_time, 2)
+def show_results():
+    st.balloons()
+    st.title("Test Results")
+    
+    # Calculate metrics
+    total_time = sum(ans['time_taken'] for ans in st.session_state.user_answers.values())
+    correct = sum(1 for ans in st.session_state.user_answers.values() if ans['selected'] == ans['correct'])
+    accuracy = (correct / len(questions)) * 100
+    
+    # Display metrics
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Time", f"{total_time:.2f}s")
+    with col2:
+        st.metric("Accuracy", f"{accuracy:.2f}%")
+    with col3:
+        st.metric("Correct Answers", f"{correct}/{len(questions)}")
+    
+    # Show detailed analysis
+    with st.expander("Detailed Analysis"):
+        st.subheader("Topic-wise Performance")
+        topic_data = {}
+        for q in questions:
+            ans = st.session_state.user_answers[q['Question ID']]
+            topic = q['Topic']
+            if topic not in topic_data:
+                topic_data[topic] = {'correct': 0, 'total': 0, 'time': 0}
+            topic_data[topic]['total'] += 1
+            topic_data[topic]['time'] += ans['time_taken']
+            if ans['selected'] == ans['correct']:
+                topic_data[topic]['correct'] += 1
+        
+        for topic, data in topic_data.items():
+            st.write(f"**{topic}**")
+            st.progress(data['correct']/data['total'])
+            st.write(f"Score: {data['correct']}/{data['total']}")
+            st.write(f"Time Spent: {data['time']:.2f}s")
+            
+            if (data['correct']/data['total']) < 0.7:
+                st.write(f"📚 Suggestion: {get_video_suggestions(topic)}")
 
-    # Calculate performance insights after the test is complete
-    analyze_performance(username, total_test_time)
+# Main app flow
+st.title("Online Mock Test Platform")
 
-# Streamlit interface to log in and start the mock test
-def main():
-    # Login page
-    st.title("Welcome to the Mock Test App")
-    username = st.text_input("Enter your username")
-
-    if username:
-        if st.button("Start Mock Test"):
-            start_mock_test(username)
+if not st.session_state.authenticated:
+    authenticate_user()
+else:
+    if not st.session_state.test_started:
+        if st.button("Start Test"):
+            st.session_state.test_started = True
+            st.session_state.question_start_time = time.time()
+            st.experimental_rerun()
+    else:
+        if st.session_state.current_question < len(questions):
+            q = questions[st.session_state.current_question]
+            display_question(q)
+            st.session_state.question_start_time = time.time()
         else:
-            st.write("Please enter your username and click 'Start Mock Test' to begin.")
-
-if __name__ == "__main__":
-    main()
+            show_results()
+            if st.button("Retake Test"):
+                st.session_state.clear()
+                st.experimental_rerun()
