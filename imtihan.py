@@ -1,88 +1,72 @@
-import streamlit as st
-import pandas as pd
 import time
-import csv
-import os
+import streamlit as st
 
-# Google Sheets CSV URL
-sheet_url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRL4XMpdsZB_DFz0LTbfUhV5sd_HkleNAcDSJle-QSrECMN2Q8PA7iP6XNR97w5z20kNpVAdIK3a1ZE/pub?output=csv'
-
-# User authentication dictionary (username: password)
-users_db = {
-    'user1': 'password1',
-    'user2': 'password2',
-    # Add more users as needed
-}
-
-# Load the dataset from Google Sheets
-data = pd.read_csv(sheet_url)
-
-# List of questions with options and correct answer
-questions = data[['Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Topic']].to_dict(orient='records')
-
-# Initialize variables for tracking time and performance
+# Initialize global variables to track results
 total_time = 0
 correct_answers = 0
 time_per_question = []
 topic_time = {}
 incorrect_questions = []
-question_times = []  # Stores the time taken for each question
-topic_scores = {}  # Stores correct answers for each topic
-topic_counts = {}  # Stores the total number of questions for each topic
+topic_scores = {}
+topic_counts = []
+question_times = []
 
-# Function to calculate topper's time (30% less)
-def get_topper_time(user_time):
-    return round(user_time * 0.7, 2)
+# Dummy questions for the mock test
+questions = [
+    {
+        'Question ID': 1,
+        'Question Text': 'What is the capital of France?',
+        'Option A': 'Paris',
+        'Option B': 'London',
+        'Option C': 'Rome',
+        'Option D': 'Berlin',
+        'Correct Answer': 'A',
+        'Topic': 'Geography'
+    },
+    {
+        'Question ID': 2,
+        'Question Text': 'Who developed the theory of relativity?',
+        'Option A': 'Isaac Newton',
+        'Option B': 'Albert Einstein',
+        'Option C': 'Galileo Galilei',
+        'Option D': 'Nikola Tesla',
+        'Correct Answer': 'B',
+        'Topic': 'Physics'
+    },
+    # Add more questions as needed
+]
 
-# Function to provide video suggestions for weak topics
-def get_video_suggestions(topic):
-    # Dictionary of video suggestions for weak topics
-    video_suggestions = {
-        'Math': 'https://www.youtube.com/watch?v=Q5H9P9_cLo4',
-        'Physics': 'https://www.youtube.com/watch?v=7jB5guIhwcY',
-        'Chemistry': 'https://www.youtube.com/watch?v=8glvj2zzVg4'
-        # Add more topics and links as required
-    }
-    return video_suggestions.get(topic, "No video suggestion available for this topic.")
+# Function to analyze performance after test completion
+def analyze_performance(username, total_test_time):
+    global correct_answers, total_time, topic_scores, topic_counts, time_per_question, topic_time, incorrect_questions
+    
+    st.write(f"Test completed! Well done, {username}!")
+    st.write(f"Total time taken: {total_test_time} seconds.")
+    st.write(f"Correct answers: {correct_answers} out of {len(questions)}")
+    st.write(f"Total time spent: {total_time} seconds")
+    
+    # Displaying time per question
+    st.write("Time taken per question:")
+    for q_id, time_taken in time_per_question:
+        st.write(f"Question {q_id}: {time_taken} seconds")
+    
+    # Displaying time spent per topic
+    st.write("Time spent per topic:")
+    for topic, time_spent in topic_time.items():
+        st.write(f"{topic}: {time_spent} seconds")
+    
+    # Displaying incorrect questions
+    st.write("Incorrect Questions:")
+    for q_id in incorrect_questions:
+        st.write(f"Question {q_id} was answered incorrectly.")
+    
+    # Displaying topic-wise scores
+    st.write("Topic-wise Scores:")
+    for topic, score in topic_scores.items():
+        total_topic_questions = topic_counts.get(topic, 0)
+        st.write(f"{topic}: {score}/{total_topic_questions} correct")
 
-# Function to authenticate the user using Streamlit
-def authenticate_user():
-    st.title('Login Page')
-    username = st.text_input('Username:')
-    password = st.text_input('Password:', type='password')
-
-    if st.button('Login'):
-        if users_db.get(username) == password:
-            st.success(f"Welcome {username}!")
-            st.session_state.logged_in = True  # Set logged_in flag to True
-            st.session_state.username = username  # Store the username in session state
-            return True
-        else:
-            st.error("Invalid username or password. Please try again.")
-            return False
-    return False
-
-# Function to store the results persistently
-def store_results(username, total_time, accuracy, time_per_question, topic_time, incorrect_questions):
-    # Create or append to the results CSV file
-    file_name = f'{username}_results.csv'
-
-    # Check if the file exists, and if not, create a new one with headers
-    file_exists = os.path.isfile(file_name)
-
-    with open(file_name, mode='a', newline='') as file:
-        writer = csv.writer(file)
-
-        if not file_exists:
-            # Write header if file doesn't exist
-            writer.writerow(['Username', 'Total Time', 'Accuracy', 'Question ID', 'Time Taken', 'Topic', 'Incorrect Questions'])
-
-        # Write user data and performance details
-        for q_id, time_taken in time_per_question:
-            for topic, time_spent in topic_time.items():
-                writer.writerow([username, total_time, accuracy, q_id, time_taken, topic, incorrect_questions])
-
-# Simulate a mock test function
+# Function to start the mock test
 def start_mock_test(username):
     global total_time, correct_answers, time_per_question, topic_time, incorrect_questions, topic_scores, topic_counts
     total_time = 0
@@ -103,8 +87,12 @@ def start_mock_test(username):
         st.write(f"C. {q['Option C']}")
         st.write(f"D. {q['Option D']}")
 
-        # Ask the user for input
-        user_answer = st.radio("Your answer:", ['A', 'B', 'C', 'D'])
+        # Ask the user for input with a unique key for each question
+        user_answer = st.radio(
+            "Your answer:",
+            ['A', 'B', 'C', 'D'],
+            key=f"question_{q['Question ID']}"  # Unique key based on the question ID
+        )
 
         # Record the start time of the question
         question_start_time = time.time()
@@ -149,65 +137,17 @@ def start_mock_test(username):
     # Calculate performance insights after the test is complete
     analyze_performance(username, total_test_time)
 
-# Function to analyze performance after test completion
-def analyze_performance(username, total_test_time):
-    global total_time, correct_answers, question_times, topic_time, incorrect_questions, topic_scores, topic_counts
-
-    # Calculate the overall accuracy
-    accuracy = (correct_answers / len(questions)) * 100
-
-    # Display test completion insights
-    st.write("\n**Test completed!**")
-    st.write(f"Total Time: {total_test_time:.2f} seconds")
-    st.write(f"Accuracy: {accuracy:.2f}%")
-
-    # Show time per question
-    st.write("\n**Time per question:**")
-    for q_id, time_taken in time_per_question:
-        st.write(f"Question ID {q_id}: {time_taken:.2f} seconds")
-
-    # Show time spent per topic
-    st.write("\n**Time spent per topic:**")
-    for topic, time_spent in topic_time.items():
-        st.write(f"{topic}: {time_spent:.2f} seconds")
-
-    # Show topper's time and your time comparison
-    st.write("\n**Your time and Topper's time:**")
-    for time_taken in question_times:
-        topper_time = get_topper_time(time_taken)
-        st.write(f"Your time: {time_taken:.2f} seconds | Topper's time: {topper_time:.2f} seconds")
-
-    # Show incorrect questions
-    st.write(f"\n**Incorrect questions:** {incorrect_questions}")
-
-    # Topic-wise performance and suggestions for weak topics
-    st.write("\n**Topic-wise performance:**")
-    for topic in topic_scores:
-        topic_percentage = (topic_scores[topic] / topic_counts[topic]) * 100
-        st.write(f"{topic}: {topic_percentage:.2f}%")
-
-        # If topic percentage is less than 70%, it's a weak topic
-        if topic_percentage < 70:
-            st.write(f"Weak Topic: {topic}")
-            st.write(f"Suggestion: Improve this topic by watching the video: ", get_video_suggestions(topic))
-
-    # Store the results persistently in a CSV file
-    store_results(username, total_test_time, accuracy, time_per_question, topic_time, incorrect_questions)
-
-# Main function to run the test
+# Streamlit interface to log in and start the mock test
 def main():
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False  # Initialize logged_in flag if not already set
+    # Login page
+    st.title("Welcome to the Mock Test App")
+    username = st.text_input("Enter your username")
 
-    if not st.session_state.logged_in:
-        # Handle login
-        if authenticate_user():
-            st.session_state.logged_in = True
-    else:
-        # If logged in, show the button to start the mock test
-        if st.button('Start Mock Test'):
-            start_mock_test(st.session_state.username)
+    if username:
+        if st.button("Start Mock Test"):
+            start_mock_test(username)
+        else:
+            st.write("Please enter your username and click 'Start Mock Test' to begin.")
 
-# Run the main function
 if __name__ == "__main__":
     main()
